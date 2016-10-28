@@ -296,10 +296,55 @@ int get_params(int argc, char **argv, sim_param_t *params) {
   const char *optstring = "h:o:F:f:t:s:d:k:v:g:";
   int c;
 
-#define get_int_arg(c, field) \
-  case c: params->field = atoi(optarg); break
-#define get_flt_arg(c, field) \
-  case c: params->field = (float)atof(optarg); break
-
   default_params(params);
-          
+  while ((c = getopt(argc, argv, optstring)) != -1) {
+    switch (c) {
+      case 'h':
+        print_usage();
+        return -1;
+      case 'o':
+        strcpy(params->fname = malloc(strlen(optarg)+1), optarg);
+        break;
+      case 'F':
+        params->nframes = atoi(optarg); break;
+      case 'f':
+        params->npframe = atoi(optarg); break;
+      case 't':
+        params->dt = (float)atof(optarg); break;
+      case 's':
+        params->h = (float)atof(optarg); break;
+      case 'd':
+        params->rho0 = (float)atof(optarg); break;
+      case 'k':
+        params->k = (float)atof(optarg); break;
+      case 'v':
+        params->mu = (float)atof(optarg); break;
+      case 'g':
+        params->g = (float)atof(optarg); break;
+      default:
+        fprintf(stderr, "Unknown option\n");
+        return -1;
+    }
+  }
+  return 0;
+}
+
+void write_header(FILE *fp, int n) {
+  float scale = 1.0;
+  uint32_t nn = htonl((uint32_t)n);
+  uint32_t nscale = htonf(&scale);
+  fwrite(&nn, sizeof(nn), 1, fp);
+  fwrite(&nscale, sizeof(nscale), 1, fp);
+}
+
+void write_frame_data(FILE *fp, int n, float *x, int *c) {
+  for (int i = 0; i < n; i++) {
+    uint32_t xi = htonf(x++);
+    uint32_t yi = htonf(x++);
+    fwrite(&xi, sizeof(xi), 1, fp);
+    fwrite(&yi, sizeof(yi), 1, fp);
+    uint32_t ci0 = c ? *c++ : 0;
+    uint32_t ci = htonl(ci0);
+    fwrite(&ci, sizeof(ci), 1, fp);
+  }
+}

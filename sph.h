@@ -1,6 +1,8 @@
 #include <iostream>
 #include <cmath>
 
+#define VERSION_TAG "SPHView01"
+
 typedef struct sim_param_t_ {
   char *fname;                // file name
   int nframes;                // number of frames
@@ -28,3 +30,7 @@ typedef struct sim_state_t_ {
 
 sim_state_t *alloc_state(int n); // TODO
 void free_state(sim_state_t *state); // TODO
+
+uint32_t htonf(void *data) {
+  return htonl(*(uint32_t*)data);
+}
