@@ -100,11 +100,14 @@ void compute_density(sim_state_t *state, sim_param_t *params) {
   float h2 = h * h;
   float h8 = (h2 * h2) * (h2 * h2);
   float C = 4 * state->mass / M_PI / h8;
+  float Cp = 4 * state->mass / M_PI / h2;
 
   memset(rho, 0, n*sizeof(float));
-  // FIXME brute force
+  /* Brute force neighbor searching -
+   * should be modified to use trees.
+   * FIXME */
   for (int i = 0; i < n; i++) {
-    rho[i] += 4 * state->mass / M_PI / h2; // FIXME move out of the loop
+    rho[i] += Cp;
     for (int j = i+1; j < n; j++) {
       float dx = x[2*i+0] - x[2*j+0];
       float dy = x[2*i+1] - x[2*j+1];
@@ -150,9 +153,11 @@ void compute_accel(sim_state_t *state, sim_param_t *params) {
   float Cp = 15 * k;
   float Cv = -40 * mu;
 
+  /* Brute force neighbor searching -
+   * should be modified to use trees.
+   * FIXME */
   // compute interation forces
-  // FIXME brute force
-  for (int i = 0; i < n; i++) {
+    for (int i = 0; i < n; i++) {
     const float rhoi = rho[i];
     for (int j = i + 1; j < n; j++) {
       float dx = x[2*i+0] - x[2*j+0];
