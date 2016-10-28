@@ -1,4 +1,95 @@
+#include <iostream>
+#include <getopt.h>
+#include <cmath>
+#include <cstring>
+#include <arpa/inet.h>
 #include "sph.h"
+
+static void default_params(sim_param_t *params) {
+  params->fname = "run.out";
+  params->nframes = 400;
+  params->npframe = 100;
+  params->dt = 1e-4;
+  params->h = 5e-2;
+  params->rho0 = 1000;
+  params->k = 1e3;
+  params->mu = 0.1;
+  params->g = 9.8;
+}
+
+int get_params(int argc, char **argv, sim_param_t *params) {
+  extern char *optarg;
+  const char *optstring = "h:o:F:f:t:s:d:k:v:g:";
+  int c;
+
+  default_params(params);
+  while ((c = getopt(argc, argv, optstring)) != -1) {
+    switch (c) {
+      case 'h':
+        print_usage();
+        return -1;
+      case 'o':
+        params->fname = optarg; break;
+      case 'F':
+        params->nframes = atoi(optarg); break;
+      case 'f':
+        params->npframe = atoi(optarg); break;
+      case 't':
+        params->dt = (float)atof(optarg); break;
+      case 's':
+        params->h = (float)atof(optarg); break;
+      case 'd':
+        params->rho0 = (float)atof(optarg); break;
+      case 'k':
+        params->k = (float)atof(optarg); break;
+      case 'v':
+        params->mu = (float)atof(optarg); break;
+      case 'g':
+        params->g = (float)atof(optarg); break;
+      default:
+        fprintf(stderr, "Unknown option\n");
+        return -1;
+    }
+  }
+  return 0;
+}
+
+static void print_usage() {
+  sim_param_t param;
+  default_params(&param);
+  fprintf(stderr,
+      "SPH\n"
+      "\t-h: print this message\n"
+      "\t-o: output file name (%s)\n"
+      "\t-F: number of frames (%d)\n"
+      "\t-f: steps per frame (%d)\n"
+      "\t-t: time step (%e)\n"
+      "\t-s: particle size (%e)\n"
+      "\t-d: reference density (%g)\n"
+      "\t-k: bulk modulus (%g)\n"
+      "\t-v: dynamic viscosity (%g)\n"
+      "\t-g: gravitational strength (%g)\n",
+      param.fname.c_str(), param.nframes, param.npframe,
+      param.dt, param.h, param.rho0,
+      param.k, param.mu, param.g);
+}
+
+sim_state_t *alloc_state(int n) {
+  sim_state_t *state = (sim_state_t *)malloc(sizeof(sim_state_t));
+  state->n = n;
+  state->rho = (float *)malloc(sizeof(float) * n);
+  state->x = (float *)malloc(sizeof(float) * n * 2);
+  state->vh = (float *)malloc(sizeof(float) * n * 2);
+  state->v = (float *)malloc(sizeof(float) * n * 2);
+  state->a = (float *)malloc(sizeof(float) * n * 2);
+
+  return state;
+}
+
+void free_state(sim_state_t *state) {
+  assert(state != NULL);
+  free(state);
+}
 
 void compute_density(sim_state_t *state, sim_param_t *params) {
   int n = state->n;
@@ -71,7 +162,7 @@ void compute_accel(sim_state_t *state, sim_param_t *params) {
         const float rhoj = rho[j];
         float q = sqrt(r2) / h;
         float u = 1 - q;
-        float w0 = c0 * u / rhoi / rhoj;
+        float w0 = C0 * u / rhoi / rhoj;
         float wp = w0 * Cp * (rhoi + rhoj - 2 * rho0) * u / q;
         float wv = w0 * Cv;
         float dvx = v[2*i+0] - v[2*j+0];
@@ -157,8 +248,6 @@ static void reflect_bc(sim_state_t *state) {
   }
 }
 
-typedef int (*domain_fun_t)(float, float);
-
 int box_indicator(float x, float y) {
   return (x < 0.5) && (y < 0.5);
 }
@@ -218,117 +307,6 @@ sim_state_t *init_particles(sim_param_t *param) {
   return state;
 }
 
-void check_state(sim_state_t *state) {
-  for (int i = 0; i < state->n; i++) {
-    float xi = state->x[2*i+0];
-    float yi = state->x[2*i+1];
-    assert(xi >= 0 || xi <= 1);
-    assert(yi >= 0 || yi <= 1);
-  }
-}
-
-int main(int argc, char **argv) {
-  sim_param_t params;
-  if (get_params(argc, argv, &params) != 0)
-    exit(-1);
-  
-  sim_state_t *state = init_particles(&params);
-  FILE *fp = fopen(params.fname, "w");
-  int nframes = params.nframes;
-  int npframe = params.npframe;
-  float dt = params.dt;
-  int n = state->n;
-
-  tic(0); // TODO
-  write_header(fp, n);
-  write_frame_data(fp, n, state->x, NULL);
-  compute_accel(state, &params);
-  leapfrog_start(state, dt);
-  check_state(state);
-  for (int frame = 1; frame < nframes; frame++) {
-    for (int i = 0; i < npframe; i++) {
-      compute_accel(state, &params);
-      leapfrog_step(state, dt);
-      check_state(state);
-    }
-    write_frame_data(fp, n, state->x, NULL);
-  }
-  printf("Ran in %g seconds\n", toc(0)); // TODO
-
-  fclose(fp);
-  free_state(state);
-}
-
-static void default_params(sim_param_t *params) {
-  params->fname = "run.out";
-  params->nframes = 400;
-  params->npframe = 100;
-  params->dt = 1e-4;
-  params->h = 5e-2;
-  params->rho0 = 1000;
-  params->k = 1e3;
-  params->mu = 0.1;
-  params->g = 9.8;
-}
-
-static void print_usage() {
-  sim_params_t param;
-  default_params(&param);
-  fprintf(stderr,
-      "SPH\n"
-      "\t-h: print this message\n"
-      "\t-o: output file name (%s)\n"
-      "\t-F: number of frames (%d)\n"
-      "\t-f: steps per frame (%d)\n"
-      "\t-t: time step (%e)\n"
-      "\t-s: particle size (%e)\n"
-      "\t-d: reference density (%g)\n"
-      "\t-k: bulk modulus (%g)\n"
-      "\t-v: dynamic viscosity (%g)\n"
-      "\t-g: gravitational strength (%g)\n",
-      param.fname, param.nframes, param.npframe,
-      param.dt, param.h param.rho0,
-      param.k, param.mu, param.g);
-}
-
-int get_params(int argc, char **argv, sim_param_t *params) {
-  extern char *optarg;
-  const char *optstring = "h:o:F:f:t:s:d:k:v:g:";
-  int c;
-
-  default_params(params);
-  while ((c = getopt(argc, argv, optstring)) != -1) {
-    switch (c) {
-      case 'h':
-        print_usage();
-        return -1;
-      case 'o':
-        strcpy(params->fname = malloc(strlen(optarg)+1), optarg);
-        break;
-      case 'F':
-        params->nframes = atoi(optarg); break;
-      case 'f':
-        params->npframe = atoi(optarg); break;
-      case 't':
-        params->dt = (float)atof(optarg); break;
-      case 's':
-        params->h = (float)atof(optarg); break;
-      case 'd':
-        params->rho0 = (float)atof(optarg); break;
-      case 'k':
-        params->k = (float)atof(optarg); break;
-      case 'v':
-        params->mu = (float)atof(optarg); break;
-      case 'g':
-        params->g = (float)atof(optarg); break;
-      default:
-        fprintf(stderr, "Unknown option\n");
-        return -1;
-    }
-  }
-  return 0;
-}
-
 void write_header(FILE *fp, int n) {
   float scale = 1.0;
   uint32_t nn = htonl((uint32_t)n);
@@ -347,4 +325,8 @@ void write_frame_data(FILE *fp, int n, float *x, int *c) {
     uint32_t ci = htonl(ci0);
     fwrite(&ci, sizeof(ci), 1, fp);
   }
+}
+
+uint32_t htonf(void *data) {
+  return htonl(*(uint32_t*)data);
 }
